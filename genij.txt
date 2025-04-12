@@ -1,0 +1,2063 @@
+package com.example.myapplication6;
+
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.Toast;
+import android.widget.TextView;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+import android.view.MenuInflater;
+
+
+import android.app.AlertDialog;
+import android.view.Menu;
+import android.view.MenuItem;
+
+import android.util.Log;
+import android.view.inputmethod.InputMethodManager;
+import android.content.Context;
+import io.socket.client.IO;
+import io.socket.client.Socket;
+import io.socket.emitter.Emitter;
+import org.json.JSONObject;
+import org.json.JSONArray;
+import java.net.URISyntaxException;
+import java.time.LocalDate;
+
+import androidx.appcompat.app.ActionBar;
+import androidx.appcompat.app.AppCompatActivity;
+
+
+public class FragmentC extends Fragment {
+    private Socket socket;
+    private EditText editText;
+    private TextView textView;
+    // private Button button;
+    
+    private static final String TAG = "SocketIO";
+
+    private boolean isValidIP(String ip) {
+        // Check if IP is in format: http://xxx.xxx.xxx.xxx OR http://localhost
+        return ip.matches("^(http:\\/\\/localhost|http:\\/\\/\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})$");
+    }
+    
+
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_c, container, false);
+
+        textView = view.findViewById(R.id.about_text);
+        editText = view.findViewById(R.id.about_edit_text);
+        Button button = view.findViewById(R.id.about_button);
+
+      
+
+        View footer = view.findViewById(R.id.footer_layout);
+
+        // Retrieve stored data
+        String ip = LocalStorage.getData(requireContext(), "IP");
+        String name = LocalStorage.getData(requireContext(), "name");
+        String password = LocalStorage.getData(requireContext(), "password"); // Not recommended for security
+
+        if (ip == null || !isValidIP(ip)) { 
+            ip = "http://10.0.2.2"; // Default local server IP
+            LocalStorage.saveData(getContext(), "IP", ip);
+        }
+
+        String SERVER_URL = ip + ":3000";
+
+        try {
+            
+            socket = IO.socket(SERVER_URL);
+            socket.connect();
+
+             // Listen for previous messages
+             socket.on("previousMessagess", args -> {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        JSONArray messages = (JSONArray) args[0];
+                        StringBuilder previousMessages = new StringBuilder();
+                        for (int i = 0; i < messages.length(); i++) {
+                            previousMessages.append(messages.getString(i)).append("\n");
+                        }
+                        // Set the previous messages in the TextView
+                        textView.setText(previousMessages.toString());
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error parsing previous messages: ", e);
+                    }
+                });
+            });
+
+
+            socket.on("messages", args -> {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        // args[0] is a JSONObject, not a String
+                        JSONObject messageJson = (JSONObject) args[0];
+                        String newMessage = messageJson.getString("message"); // Extract the "message" field
+                        // Append the new message to the existing TextView content
+                        textView.append(messageJson.toString()+"\n");
+                        Log.d(TAG, "Received: " + newMessage);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error receiving new message: ", e);
+                    }
+                });
+            });
+
+            // Handle connection errors
+            socket.on("connect_error", args -> {
+                Log.e(TAG, "Socket connection failed: " + args[0]);
+            });
+
+
+            button.setOnClickListener(v -> {
+                    String message = editText.getText().toString();
+                    if (!message.isEmpty()) {
+                        //textView.setText("Message Sent: " + message);
+                        Toast.makeText(getActivity(), "Message Sent!", Toast.LENGTH_SHORT).show();
+                        
+                        Log.d(TAG, "Received: " + socket.toString());
+                        
+                        try {
+                            JSONObject data = new JSONObject();
+                            data.put("message", message);
+                            socket.emit("sendMessages", data);
+                        } catch (Exception e) {
+                            Log.e(TAG, "JSON Exception: " + e.getMessage());
+                        }
+
+                        // Hide the keyboard after sending the message
+                    InputMethodManager imm = (InputMethodManager) requireContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(editText.getWindowToken(), 0);
+                    }
+
+                      
+                        
+                }});
+            
+        } catch (URISyntaxException e) {
+            LocalStorage.saveData(requireContext(), "IP", "http://10.0.2.2");
+            Log.e(TAG, "Socket Connection Error: " + e.getMessage());
+            
+        }
+
+        return view;
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        if (socket != null) {
+            socket.off("previousMessagess");
+            socket.off("messages");
+            socket.disconnect();
+        }
+    }
+
+   
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setHasOptionsMenu(true); // Enable options menu in Fragment C
+    }
+
+    @Override
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
+        menu.clear(); // Clear previous menu items
+        inflater.inflate(R.menu.menu_fragment_c, menu); // Inflate Fragment C menu
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.menu_logout) {
+            LocalStorage.removeData(requireContext(), "IP");
+            LocalStorage.removeData(requireContext(), "name");
+            LocalStorage.removeData(requireContext(), "password"); // ⚠️ Not secure
+
+            // Navigate back to Fragment B on logout
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).replaceFragment(new FragmentB(), "Fragment B", true);
+            }
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+}
+
+--------------------------------------------------------------------------------------------------
+
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <TextView
+            android:id="@+id/about_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Response will appear here"
+            android:textSize="16sp"
+            android:scrollbars="vertical"/>
+    </ScrollView>
+
+    <LinearLayout
+        android:id="@+id/footer_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/about_edit_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Enter message"
+            android:inputType="text" />
+
+        <Button
+            android:id="@+id/about_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Posalji poruku" />
+    </LinearLayout>
+
+</LinearLayout>
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.example.myapplication6;
+
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.Toast;
+import android.widget.TextView;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+import android.view.MenuInflater;
+
+
+import android.app.AlertDialog;
+import android.view.Menu;
+import android.view.MenuItem;
+
+import android.util.Log;
+import android.view.inputmethod.InputMethodManager;
+import android.content.Context;
+import io.socket.client.IO;
+import io.socket.client.Socket;
+import io.socket.emitter.Emitter;
+import org.json.JSONObject;
+import org.json.JSONArray;
+import java.net.URISyntaxException;
+import java.time.LocalDate;
+
+import androidx.appcompat.app.ActionBar;
+import androidx.appcompat.app.AppCompatActivity;
+
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+
+import android.view.Gravity;
+
+
+public class FragmentC extends Fragment {
+    private Socket socket;
+    private EditText editText;
+    private TextView textView;
+    // private Button button;
+    
+    private static final String TAG = "SocketIO";
+
+    private boolean isValidIP(String ip) {
+        // Check if IP is in format: http://xxx.xxx.xxx.xxx OR http://localhost
+        return ip.matches("^(http:\\/\\/localhost|http:\\/\\/\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})$");
+    }
+    
+    // public void addMessageBubble(String message, boolean isUser) {
+    //     LayoutInflater inflater = LayoutInflater.from(getContext());
+    //     View bubbleView;
+    
+    //     if (isUser) {
+    //         bubbleView = inflater.inflate(R.layout.bubble_user, null);
+    //     } else {
+    //         bubbleView = inflater.inflate(R.layout.bubble_guest, null);
+    //     }
+    
+    //     TextView messageText = bubbleView.findViewById(R.id.bubble_text);
+    //     messageText.setText(message);
+    
+    //     LinearLayout messageContainer = getView().findViewById(R.id.message_container);
+    //     messageContainer.addView(bubbleView);
+    
+    //     // Scroll to the latest message
+    //     ScrollView scrollView = getView().findViewById(R.id.message_scroll);
+    //     scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+    // } 
+
+    public void addMessageBubble(String message, boolean isUser) {
+        LayoutInflater inflater = LayoutInflater.from(getContext());
+        View bubbleView;
+    
+        // Inflate the correct layout based on isUser
+        bubbleView = inflater.inflate(isUser ? R.layout.bubble_user : R.layout.bubble_guest, null);
+    
+        TextView messageText = bubbleView.findViewById(R.id.bubble_text);
+        messageText.setText(message);
+    
+        // Dynamically adjust alignment
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+    
+        // Align user messages to the right, guest messages to the left
+        if (isUser) {
+            params.gravity = Gravity.END; // Align to the right for user
+        } else {
+            params.gravity = Gravity.START; // Align to the left for guest
+        }
+        bubbleView.setLayoutParams(params);
+    
+        // Add the bubble to the container
+        LinearLayout messageContainer = getView().findViewById(R.id.message_container);
+        messageContainer.addView(bubbleView);
+    
+        // Scroll to the latest message
+        ScrollView scrollView = getView().findViewById(R.id.message_scroll);
+        scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+    }
+    
+
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_c, container, false);
+
+        // textView = view.findViewById(R.id.about_text);
+        editText = view.findViewById(R.id.about_edit_text);
+        Button button = view.findViewById(R.id.about_button);
+
+      
+
+        View footer = view.findViewById(R.id.footer_layout);
+
+        // Retrieve stored data
+        String ip = LocalStorage.getData(requireContext(), "IP");
+        String name = LocalStorage.getData(requireContext(), "name");
+        String password = LocalStorage.getData(requireContext(), "password"); // Not recommended for security
+
+        if (ip == null || !isValidIP(ip)) { 
+            ip = "http://10.0.2.2"; // Default local server IP
+            LocalStorage.saveData(getContext(), "IP", ip);
+        }
+
+        String SERVER_URL = ip + ":3000";
+
+        try {
+            
+            socket = IO.socket(SERVER_URL);
+            socket.connect();
+
+             // Listen for previous messages
+             socket.on("previousMessagess", args -> {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        JSONArray messages = (JSONArray) args[0];
+                        StringBuilder previousMessages = new StringBuilder();
+                        for (int i = 0; i < messages.length(); i++) {
+                            // previousMessages.append(messages.getString(i)).append("\n");
+                            addMessageBubble(messages.getString(i), true);
+                        }
+                        // Set the previous messages in the TextView
+                        // textView.setText(previousMessages.toString());
+
+
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error parsing previous messages: ", e);
+                    }
+                });
+            });
+
+
+            socket.on("messages", args -> {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        // args[0] is a JSONObject, not a String
+                        JSONObject messageJson = (JSONObject) args[0];
+                        // String newMessage = messageJson.getString("message"); // Extract the "message" field
+                        // // Append the new message to the existing TextView content
+                        // textView.append(messageJson.toString()+"\n");
+
+                        String newMessage = messageJson.getString("message");
+                        // boolean isUser = messageJson.getBoolean("isUser");
+            
+                        addMessageBubble(messageJson.toString(), false);
+
+                        Log.d(TAG, "Received: " + newMessage);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error receiving new message: ", e);
+                    }
+                });
+            });
+
+            // Handle connection errors
+            socket.on("connect_error", args -> {
+                Log.e(TAG, "Socket connection failed: " + args[0]);
+            });
+
+
+            button.setOnClickListener(v -> {
+                    String message = editText.getText().toString();
+                    if (!message.isEmpty()) {
+                        //textView.setText("Message Sent: " + message);
+                        Toast.makeText(getActivity(), "Message Sent!", Toast.LENGTH_SHORT).show();
+                        
+                        Log.d(TAG, "Received: " + socket.toString());
+                        
+                        try {
+                            JSONObject data = new JSONObject();
+                            data.put("message", message);
+                            socket.emit("sendMessages", data);
+                        } catch (Exception e) {
+                            Log.e(TAG, "JSON Exception: " + e.getMessage());
+                        }
+
+                        // Hide the keyboard after sending the message
+                    InputMethodManager imm = (InputMethodManager) requireContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(editText.getWindowToken(), 0);
+                    }
+
+                      
+                        
+                }});
+            
+        } catch (URISyntaxException e) {
+            LocalStorage.saveData(requireContext(), "IP", "http://10.0.2.2");
+            Log.e(TAG, "Socket Connection Error: " + e.getMessage());
+            
+        }
+
+        return view;
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        if (socket != null) {
+            socket.off("previousMessagess");
+            socket.off("messages");
+            socket.disconnect();
+        }
+    }
+
+   
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setHasOptionsMenu(true); // Enable options menu in Fragment C
+    }
+
+    @Override
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
+        menu.clear(); // Clear previous menu items
+        inflater.inflate(R.menu.menu_fragment_c, menu); // Inflate Fragment C menu
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.menu_logout) {
+            LocalStorage.removeData(requireContext(), "IP");
+            LocalStorage.removeData(requireContext(), "name");
+            LocalStorage.removeData(requireContext(), "password"); // ⚠️ Not secure
+
+            // Navigate back to Fragment B on logout
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).replaceFragment(new FragmentB(), "Fragment B", true);
+            }
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+}
+
+----------------------------------------------------------------------------------
+
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+   <ScrollView
+    android:id="@+id/message_scroll"
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1">
+        
+    <LinearLayout
+        android:id="@+id/message_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
+
+</ScrollView>
+
+
+
+    <LinearLayout
+        android:id="@+id/footer_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/about_edit_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Enter message"
+            android:inputType="text" />
+
+        <Button
+            android:id="@+id/about_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Posalji poruku" />
+    </LinearLayout>
+
+</LinearLayout>
+
+////////////////////////////////////////////////////////////////////////////////////
+
+package com.example.myapplication6;
+
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.Toast;
+import android.widget.TextView;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+import android.view.MenuInflater;
+
+
+import android.app.AlertDialog;
+import android.view.Menu;
+import android.view.MenuItem;
+
+import android.util.Log;
+import android.view.inputmethod.InputMethodManager;
+import android.content.Context;
+import io.socket.client.IO;
+import io.socket.client.Socket;
+import io.socket.emitter.Emitter;
+import org.json.JSONObject;
+import org.json.JSONArray;
+import java.net.URISyntaxException;
+import java.time.LocalDate;
+
+import androidx.appcompat.app.ActionBar;
+import androidx.appcompat.app.AppCompatActivity;
+
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+
+import android.view.Gravity;
+
+
+public class FragmentC extends Fragment {
+    private Socket socket;
+    private EditText editText;
+    private TextView textView;
+    // private Button button;
+    
+    private static final String TAG = "SocketIO";
+
+    private boolean isValidIP(String ip) {
+        // Check if IP is in format: http://xxx.xxx.xxx.xxx OR http://localhost
+        return ip.matches("^(http:\\/\\/localhost|http:\\/\\/\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})$");
+    }
+    
+    // public void addMessageBubble(String message, boolean isUser) {
+    //     LayoutInflater inflater = LayoutInflater.from(getContext());
+    //     View bubbleView;
+    
+    //     if (isUser) {
+    //         bubbleView = inflater.inflate(R.layout.bubble_user, null);
+    //     } else {
+    //         bubbleView = inflater.inflate(R.layout.bubble_guest, null);
+    //     }
+    
+    //     TextView messageText = bubbleView.findViewById(R.id.bubble_text);
+    //     messageText.setText(message);
+    
+    //     LinearLayout messageContainer = getView().findViewById(R.id.message_container);
+    //     messageContainer.addView(bubbleView);
+    
+    //     // Scroll to the latest message
+    //     ScrollView scrollView = getView().findViewById(R.id.message_scroll);
+    //     scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+    // } 
+
+    public void addMessageBubble(String message, boolean isUser) {
+        LayoutInflater inflater = LayoutInflater.from(getContext());
+        View bubbleView;
+    
+        // Inflate the correct layout based on isUser
+        bubbleView = inflater.inflate(isUser ? R.layout.bubble_user : R.layout.bubble_guest, null);
+    
+        TextView messageText = bubbleView.findViewById(R.id.bubble_text);
+        messageText.setText(message);
+    
+        // Dynamically adjust alignment
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+    
+        // Align user messages to the right, guest messages to the left
+        if (isUser) {
+            params.gravity = Gravity.END; // Align to the right for user
+        } else {
+            params.gravity = Gravity.START; // Align to the left for guest
+        }
+        bubbleView.setLayoutParams(params);
+    
+        // Add the bubble to the container
+        LinearLayout messageContainer = getView().findViewById(R.id.message_container);
+        messageContainer.addView(bubbleView);
+    
+        // Scroll to the latest message
+        ScrollView scrollView = getView().findViewById(R.id.message_scroll);
+        scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+    }
+    
+
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_c, container, false);
+
+        // textView = view.findViewById(R.id.about_text);
+        editText = view.findViewById(R.id.about_edit_text);
+        Button button = view.findViewById(R.id.about_button);
+
+      
+
+        View footer = view.findViewById(R.id.footer_layout);
+
+        // Retrieve stored data
+        String ip = LocalStorage.getData(requireContext(), "IP");
+        String name = LocalStorage.getData(requireContext(), "name");
+        String password = LocalStorage.getData(requireContext(), "password"); // Not recommended for security
+
+        if (ip == null || !isValidIP(ip)) { 
+            ip = "http://10.0.2.2"; // Default local server IP
+            LocalStorage.saveData(getContext(), "IP", ip);
+        }
+
+        String SERVER_URL = ip + ":3000";
+
+        try {
+            
+            socket = IO.socket(SERVER_URL);
+            socket.connect();
+
+             // Listen for previous messages
+             socket.on("previousMessagess", args -> {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        JSONArray messages = (JSONArray) args[0];
+                        StringBuilder previousMessages = new StringBuilder();
+                        for (int i = 0; i < messages.length(); i++) {
+                            // previousMessages.append(messages.getString(i)).append("\n");
+                            addMessageBubble(messages.getString(i), true);
+                        }
+                        // Set the previous messages in the TextView
+                        // textView.setText(previousMessages.toString());
+
+
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error parsing previous messages: ", e);
+                    }
+                });
+            });
+
+
+            socket.on("messages", args -> {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        // args[0] is a JSONObject, not a String
+                        JSONObject messageJson = (JSONObject) args[0];
+                        // String newMessage = messageJson.getString("message"); // Extract the "message" field
+                        // // Append the new message to the existing TextView content
+                        // textView.append(messageJson.toString()+"\n");
+
+                        String newMessage = messageJson.getString("message");
+                        // boolean isUser = messageJson.getBoolean("isUser");
+            
+                        addMessageBubble(messageJson.toString(), false);
+
+                        Log.d(TAG, "Received: " + newMessage);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error receiving new message: ", e);
+                    }
+                });
+            });
+
+            // Handle connection errors
+            socket.on("connect_error", args -> {
+                Log.e(TAG, "Socket connection failed: " + args[0]);
+            });
+
+
+            button.setOnClickListener(v -> {
+                    String message = editText.getText().toString();
+                    if (!message.isEmpty()) {
+                        //textView.setText("Message Sent: " + message);
+                        Toast.makeText(getActivity(), "Message Sent!", Toast.LENGTH_SHORT).show();
+                        
+                        Log.d(TAG, "Received: " + socket.toString());
+                        
+                        try {
+                            JSONObject data = new JSONObject();
+                            data.put("message", message);
+                            socket.emit("sendMessages", data);
+                        } catch (Exception e) {
+                            Log.e(TAG, "JSON Exception: " + e.getMessage());
+                        }
+
+                        // Hide the keyboard after sending the message
+                    InputMethodManager imm = (InputMethodManager) requireContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(editText.getWindowToken(), 0);
+                    }
+
+                      
+                        
+                }});
+            
+        } catch (URISyntaxException e) {
+            LocalStorage.saveData(requireContext(), "IP", "http://10.0.2.2");
+            Log.e(TAG, "Socket Connection Error: " + e.getMessage());
+            
+        }
+
+        return view;
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        if (socket != null) {
+            socket.off("previousMessagess");
+            socket.off("messages");
+            socket.disconnect();
+        }
+    }
+
+   
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setHasOptionsMenu(true); // Enable options menu in Fragment C
+    }
+
+    @Override
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
+        menu.clear(); // Clear previous menu items
+        inflater.inflate(R.menu.menu_fragment_c, menu); // Inflate Fragment C menu
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.menu_logout) {
+            LocalStorage.removeData(requireContext(), "IP");
+            LocalStorage.removeData(requireContext(), "name");
+            LocalStorage.removeData(requireContext(), "password"); // ⚠️ Not secure
+
+            // Navigate back to Fragment B on logout
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).replaceFragment(new FragmentB(), "Fragment B", true);
+            }
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+}
+
+----------------------------------------------------------------------------------
+
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+   <ScrollView
+    android:id="@+id/message_scroll"
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1">
+        
+    <LinearLayout
+        android:id="@+id/message_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
+
+</ScrollView>
+
+
+
+    <LinearLayout
+        android:id="@+id/footer_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/about_edit_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Enter message"
+            android:inputType="text" />
+
+        <Button
+            android:id="@+id/about_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Posalji poruku" />
+    </LinearLayout>
+
+</LinearLayout>
+
+-------------------------------------------------------------------------------------
+
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_gravity="start"
+    android:orientation="horizontal"
+    android:padding="8dp">
+
+    <TextView
+        android:id="@+id/bubble_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bubble_guest_bg"
+        android:padding="8dp"
+        android:textColor="#000000"
+        android:textSize="16sp" />
+</LinearLayout>
+
+-------------------------------------------------------------------------------------
+
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_gravity="end"
+    android:orientation="horizontal"
+    android:padding="8dp">
+
+    <TextView
+        android:id="@+id/bubble_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bubble_user_bg"
+        android:padding="8dp"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp" />
+</LinearLayout>
+
+
+/////////////////////////////////////////////////////////////////////////////////////
+
+package com.example.myapplication6;
+
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.Toast;
+import android.widget.TextView;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+import android.view.MenuInflater;
+
+
+import android.app.AlertDialog;
+import android.view.Menu;
+import android.view.MenuItem;
+
+import android.util.Log;
+import android.view.inputmethod.InputMethodManager;
+import android.content.Context;
+import io.socket.client.IO;
+import io.socket.client.Socket;
+import io.socket.emitter.Emitter;
+import org.json.JSONObject;
+import org.json.JSONArray;
+import java.net.URISyntaxException;
+import java.time.LocalDate;
+
+import androidx.appcompat.app.ActionBar;
+import androidx.appcompat.app.AppCompatActivity;
+
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+
+import android.view.Gravity;
+import android.widget.ImageView;
+
+public class FragmentC extends Fragment {
+    private Socket socket;
+    private EditText editText;
+    private TextView textView;
+    // private Button button;
+    
+    private static final String TAG = "SocketIO";
+
+    private boolean isValidIP(String ip) {
+        // Check if IP is in format: http://xxx.xxx.xxx.xxx OR http://localhost
+        return ip.matches("^(http:\\/\\/localhost|http:\\/\\/\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})$");
+    }
+    
+   
+
+    // public void addMessageBubble(String message, boolean isUser) {
+    //     LayoutInflater inflater = LayoutInflater.from(getContext());
+    //     View bubbleView;
+    
+    //     // Inflate the correct layout based on isUser
+    //     bubbleView = inflater.inflate(isUser ? R.layout.bubble_user : R.layout.bubble_guest, null);
+    
+    //     TextView messageText = bubbleView.findViewById(R.id.bubble_text);
+    //     messageText.setText(message);
+    
+    //     // Dynamically adjust alignment
+    //     LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+    //             LinearLayout.LayoutParams.WRAP_CONTENT,
+    //             LinearLayout.LayoutParams.WRAP_CONTENT
+    //     );
+    
+    //     // Align user messages to the right, guest messages to the left
+    //     if (isUser) {
+    //         params.gravity = Gravity.END; // Align to the right for user
+    //     } else {
+    //         params.gravity = Gravity.START; // Align to the left for guest
+    //     }
+    //     bubbleView.setLayoutParams(params);
+    
+    //     // Add the bubble to the container
+    //     LinearLayout messageContainer = getView().findViewById(R.id.message_container);
+    //     messageContainer.addView(bubbleView);
+    
+    //     // Scroll to the latest message
+    //     ScrollView scrollView = getView().findViewById(R.id.message_scroll);
+    //     scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+    // }
+
+    public void addMessageBubble(String message, boolean isUser) {
+        LayoutInflater inflater = LayoutInflater.from(getContext());
+        View bubbleView;
+    
+        // Inflate the correct bubble layout
+        bubbleView = inflater.inflate(isUser ? R.layout.bubble_user : R.layout.bubble_guest, null);
+    
+        // Set message text
+        TextView messageText = bubbleView.findViewById(R.id.bubble_text);
+        messageText.setText(message);
+    
+        // Set avatar based on user or guest
+        ImageView avatarImage = bubbleView.findViewById(R.id.bubble_avatar);
+        if (isUser) {
+            avatarImage.setImageResource(R.drawable.ic_user_avatar);
+        } else {
+            avatarImage.setImageResource(R.drawable.ic_guest_avatar);
+        }
+    
+        // Set message alignment dynamically
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.gravity = isUser ? Gravity.END : Gravity.START;
+        bubbleView.setLayoutParams(params);
+    
+        // Add bubble to the message container
+        LinearLayout messageContainer = getView().findViewById(R.id.message_container);
+        messageContainer.addView(bubbleView);
+    
+        // Auto-scroll to the latest message
+        ScrollView scrollView = getView().findViewById(R.id.message_scroll);
+        scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+    }
+    
+    
+
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_c, container, false);
+
+        // textView = view.findViewById(R.id.about_text);
+        editText = view.findViewById(R.id.about_edit_text);
+        Button button = view.findViewById(R.id.about_button);
+
+      
+
+        View footer = view.findViewById(R.id.footer_layout);
+
+        // Retrieve stored data
+        String ip = LocalStorage.getData(requireContext(), "IP");
+        String name = LocalStorage.getData(requireContext(), "name");
+        String password = LocalStorage.getData(requireContext(), "password"); // Not recommended for security
+
+        if (ip == null || !isValidIP(ip)) { 
+            ip = "http://10.0.2.2"; // Default local server IP
+            LocalStorage.saveData(getContext(), "IP", ip);
+        }
+
+        String SERVER_URL = ip + ":3000";
+
+        try {
+            
+            socket = IO.socket(SERVER_URL);
+            socket.connect();
+
+             // Listen for previous messages
+             socket.on("previousMessagess", args -> {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        JSONArray messages = (JSONArray) args[0];
+                        StringBuilder previousMessages = new StringBuilder();
+                        for (int i = 0; i < messages.length(); i++) {
+                            // previousMessages.append(messages.getString(i)).append("\n");
+                            addMessageBubble(messages.getString(i), true);
+                        }
+                        // Set the previous messages in the TextView
+                        // textView.setText(previousMessages.toString());
+
+
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error parsing previous messages: ", e);
+                    }
+                });
+            });
+
+
+            socket.on("messages", args -> {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        // args[0] is a JSONObject, not a String
+                        JSONObject messageJson = (JSONObject) args[0];
+                        // String newMessage = messageJson.getString("message"); // Extract the "message" field
+                        // // Append the new message to the existing TextView content
+                        // textView.append(messageJson.toString()+"\n");
+
+                        String newMessage = messageJson.getString("message");
+                        // boolean isUser = messageJson.getBoolean("isUser");
+            
+                        addMessageBubble(messageJson.toString(), false);
+
+                        Log.d(TAG, "Received: " + newMessage);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error receiving new message: ", e);
+                    }
+                });
+            });
+
+            // Handle connection errors
+            socket.on("connect_error", args -> {
+                Log.e(TAG, "Socket connection failed: " + args[0]);
+            });
+
+
+            button.setOnClickListener(v -> {
+                    String message = editText.getText().toString();
+                    if (!message.isEmpty()) {
+                        //textView.setText("Message Sent: " + message);
+                        Toast.makeText(getActivity(), "Message Sent!", Toast.LENGTH_SHORT).show();
+                        
+                        Log.d(TAG, "Received: " + socket.toString());
+                        
+                        try {
+                            JSONObject data = new JSONObject();
+                            data.put("message", message);
+                            socket.emit("sendMessages", data);
+                        } catch (Exception e) {
+                            Log.e(TAG, "JSON Exception: " + e.getMessage());
+                        }
+
+                        // Hide the keyboard after sending the message
+                    InputMethodManager imm = (InputMethodManager) requireContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(editText.getWindowToken(), 0);
+                    }
+
+                      
+                        
+                }});
+            
+        } catch (URISyntaxException e) {
+            LocalStorage.saveData(requireContext(), "IP", "http://10.0.2.2");
+            Log.e(TAG, "Socket Connection Error: " + e.getMessage());
+            
+        }
+
+        return view;
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        if (socket != null) {
+            socket.off("previousMessagess");
+            socket.off("messages");
+            socket.disconnect();
+        }
+    }
+
+   
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setHasOptionsMenu(true); // Enable options menu in Fragment C
+    }
+
+    @Override
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
+        menu.clear(); // Clear previous menu items
+        inflater.inflate(R.menu.menu_fragment_c, menu); // Inflate Fragment C menu
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.menu_logout) {
+            LocalStorage.removeData(requireContext(), "IP");
+            LocalStorage.removeData(requireContext(), "name");
+            LocalStorage.removeData(requireContext(), "password"); // ⚠️ Not secure
+
+            // Navigate back to Fragment B on logout
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).replaceFragment(new FragmentB(), "Fragment B", true);
+            }
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+}
+
+---------------------------------------------------------------------------------------
+
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+sugar_club/
+   <ScrollView
+    android:id="@+id/message_scroll"
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1">
+        
+    <LinearLayout
+        android:id="@+id/message_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
+
+</ScrollView>
+
+
+
+    <LinearLayout
+        android:id="@+id/footer_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/about_edit_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Enter message"
+            android:inputType="text" />
+
+        <Button
+            android:id="@+id/about_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Posalji poruku" />
+    </LinearLayout>
+
+</LinearLayout>
+
+//////////////////////////////////////////////////////////////////////////////
+
+package com.example.myapplication6;
+
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.Toast;
+import android.widget.TextView;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+import android.view.MenuInflater;
+
+
+import android.app.AlertDialog;
+import android.view.Menu;
+import android.view.MenuItem;
+
+import android.util.Log;
+import android.view.inputmethod.InputMethodManager;
+import android.content.Context;
+import io.socket.client.IO;
+import io.socket.client.Socket;
+import io.socket.emitter.Emitter;
+import org.json.JSONObject;
+import org.json.JSONArray;
+import java.net.URISyntaxException;
+import java.time.LocalDate;
+
+import androidx.appcompat.app.ActionBar;
+import androidx.appcompat.app.AppCompatActivity;
+
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+
+import android.view.Gravity;
+import android.widget.ImageView;
+
+public class FragmentC extends Fragment {
+    private Socket socket;
+    private EditText editText;
+    private TextView textView;
+    // private Button button;
+    
+    private static final String TAG = "SocketIO";
+
+    private boolean isValidIP(String ip) {
+        // Check if IP is in format: http://xxx.xxx.xxx.xxx OR http://localhost
+        return ip.matches("^(http:\\/\\/localhost|http:\\/\\/\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})$");
+    }
+    
+   
+
+    public void addMessageBubble(String message, boolean isUser) {
+        LayoutInflater inflater = LayoutInflater.from(getContext());
+        View bubbleView;
+    
+        // Inflate the correct bubble layout
+        bubbleView = inflater.inflate(isUser ? R.layout.bubble_user : R.layout.bubble_guest, null);
+    
+        // Set message text
+        TextView messageText = bubbleView.findViewById(R.id.bubble_text);
+        messageText.setText(message);
+    
+        // Set avatar based on user or guest
+        ImageView avatarImage = bubbleView.findViewById(R.id.bubble_avatar);
+        if (isUser) {
+            avatarImage.setImageResource(R.drawable.ic_user_avatar);
+        } else {
+            avatarImage.setImageResource(R.drawable.ic_guest_avatar);
+        }
+    
+        // Set message alignment dynamically
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.gravity = isUser ? Gravity.END : Gravity.START;
+        bubbleView.setLayoutParams(params);
+    
+        // Add bubble to the message container
+        LinearLayout messageContainer = getView().findViewById(R.id.message_container);
+        messageContainer.addView(bubbleView);
+    
+        // Auto-scroll to the latest message
+        ScrollView scrollView = getView().findViewById(R.id.message_scroll);
+        scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+    }
+    
+    
+
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_c, container, false);
+
+        // textView = view.findViewById(R.id.about_text);
+        editText = view.findViewById(R.id.about_edit_text);
+        Button button = view.findViewById(R.id.about_button);
+
+      
+
+        View footer = view.findViewById(R.id.footer_layout);
+
+        // Retrieve stored data
+        String ip = LocalStorage.getData(requireContext(), "IP");
+        String name = LocalStorage.getData(requireContext(), "name");
+        String password = LocalStorage.getData(requireContext(), "password"); // Not recommended for security
+
+        if (ip == null || !isValidIP(ip)) { 
+            ip = "http://10.0.2.2"; // Default local server IP
+            LocalStorage.saveData(getContext(), "IP", ip);
+        }
+
+        String SERVER_URL = ip + ":3000";
+
+        try {
+            
+            socket = IO.socket(SERVER_URL);
+            socket.connect();
+
+             // Listen for previous messages
+             socket.on("previousMessagess", args -> {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        JSONArray messages = (JSONArray) args[0];
+                        StringBuilder previousMessages = new StringBuilder();
+                        for (int i = 0; i < messages.length(); i++) {
+                            // previousMessages.append(messages.getString(i)).append("\n");
+                            addMessageBubble(messages.getString(i), true);
+                        }
+                        // Set the previous messages in the TextView
+                        // textView.setText(previousMessages.toString());
+
+
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error parsing previous messages: ", e);
+                    }
+                });
+            });
+
+
+            socket.on("messages", args -> {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        // args[0] is a JSONObject, not a String
+                        JSONObject messageJson = (JSONObject) args[0];
+                        // String newMessage = messageJson.getString("message"); // Extract the "message" field
+                        // // Append the new message to the existing TextView content
+                        // textView.append(messageJson.toString()+"\n");
+
+                        String newMessage = messageJson.getString("message");
+                        // boolean isUser = messageJson.getBoolean("isUser");
+            
+                        addMessageBubble(messageJson.toString(), false);
+
+                        Log.d(TAG, "Received: " + newMessage);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error receiving new message: ", e);
+                    }
+                });
+            });
+
+            // Handle connection errors
+            socket.on("connect_error", args -> {
+                Log.e(TAG, "Socket connection failed: " + args[0]);
+            });
+
+
+            button.setOnClickListener(v -> {
+                    String message = editText.getText().toString();
+                    if (!message.isEmpty()) {
+                        //textView.setText("Message Sent: " + message);
+                        Toast.makeText(getActivity(), "Message Sent!", Toast.LENGTH_SHORT).show();
+                        
+                        Log.d(TAG, "Received: " + socket.toString());
+                        
+                        try {
+                            JSONObject data = new JSONObject();
+                            data.put("message", message);
+                            socket.emit("sendMessages", data);
+                        } catch (Exception e) {
+                            Log.e(TAG, "JSON Exception: " + e.getMessage());
+                        }
+
+                        // Hide the keyboard after sending the message
+                    InputMethodManager imm = (InputMethodManager) requireContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(editText.getWindowToken(), 0);
+                    }
+
+                      
+                        
+                }});
+            
+        } catch (URISyntaxException e) {
+            LocalStorage.saveData(requireContext(), "IP", "http://10.0.2.2");
+            Log.e(TAG, "Socket Connection Error: " + e.getMessage());
+            
+        }
+
+        return view;
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        if (socket != null) {
+            socket.off("previousMessagess");
+            socket.off("messages");
+            socket.disconnect();
+        }
+    }
+
+   
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setHasOptionsMenu(true); // Enable options menu in Fragment C
+    }
+
+    @Override
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
+        menu.clear(); // Clear previous menu items
+        inflater.inflate(R.menu.menu_fragment_c, menu); // Inflate Fragment C menu
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.menu_logout) {
+            LocalStorage.removeData(requireContext(), "IP");
+            LocalStorage.removeData(requireContext(), "name");
+            LocalStorage.removeData(requireContext(), "password"); // ⚠️ Not secure
+
+            // Navigate back to Fragment B on logout
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).replaceFragment(new FragmentB(), "Fragment B", true);
+            }
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+
+package com.example.myapplication6;
+
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.Toast;
+import android.widget.TextView;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+import android.view.MenuInflater;
+
+
+import android.app.AlertDialog;
+import android.view.Menu;
+import android.view.MenuItem;
+
+import android.util.Log;
+import android.view.inputmethod.InputMethodManager;
+import android.content.Context;
+import io.socket.client.IO;
+import io.socket.client.Socket;
+import io.socket.emitter.Emitter;
+import org.json.JSONObject;
+import org.json.JSONArray;
+import org.json.JSONException;
+import java.net.URISyntaxException;
+import java.time.LocalDate;
+
+import androidx.appcompat.app.ActionBar;
+import androidx.appcompat.app.AppCompatActivity;
+
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+
+import android.view.Gravity;
+import android.widget.ImageView;
+
+public class FragmentC extends Fragment {
+    private Socket socket;
+    private EditText editText;
+    private TextView textView;
+    // private Button button;
+    
+    private static final String TAG = "SocketIO";
+
+    private boolean isValidIP(String ip) {
+        // Check if IP is in format: http://xxx.xxx.xxx.xxx OR http://localhost
+        return ip.matches("^(http:\\/\\/localhost|http:\\/\\/\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})$");
+    }
+    
+   
+
+    public void addMessageBubble(JSONObject messageJson, boolean isUser) {
+        LayoutInflater inflater = LayoutInflater.from(getContext());
+        View bubbleView;
+    
+        // Inflate the correct bubble layout
+        bubbleView = inflater.inflate(isUser ? R.layout.bubble_user : R.layout.bubble_guest, null);
+    
+        // Set message text
+        TextView messageText = bubbleView.findViewById(R.id.bubble_text);
+
+        // String newMessage = messageJson.getString("messagex");
+        // String name = messageJson.getString("name");
+
+        try {
+            String newMessage = messageJson.getString("message");
+            String name = messageJson.getString("name");
+            String poruka = newMessage + " " + name;
+            messageText.setText(poruka);
+        } catch (JSONException e) {
+            Log.e(TAG, "Error extracting message fields", e);
+            messageText.setText("Error: Invalid message format");
+        }
+
+       
+        // Set avatar based on user or guest
+        ImageView avatarImage = bubbleView.findViewById(R.id.bubble_avatar);
+        if (isUser) {
+            avatarImage.setImageResource(R.drawable.ic_user_avatar);
+        } else {
+            avatarImage.setImageResource(R.drawable.ic_guest_avatar);
+        }
+    
+        // Set message alignment dynamically
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.gravity = isUser ? Gravity.END : Gravity.START;
+        bubbleView.setLayoutParams(params);
+    
+        // Add bubble to the message container
+        LinearLayout messageContainer = getView().findViewById(R.id.message_container);
+        messageContainer.addView(bubbleView);
+    
+        // Auto-scroll to the latest message
+        ScrollView scrollView = getView().findViewById(R.id.message_scroll);
+        scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+    }
+    
+    String ip="";
+    String name="";
+    String password="";
+
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_c, container, false);
+
+        // textView = view.findViewById(R.id.about_text);
+        editText = view.findViewById(R.id.about_edit_text);
+        Button button = view.findViewById(R.id.about_button);
+
+      
+
+        View footer = view.findViewById(R.id.footer_layout);
+
+        // Retrieve stored data
+        ip = LocalStorage.getData(requireContext(), "IP");
+        name = LocalStorage.getData(requireContext(), "name");
+        password = LocalStorage.getData(requireContext(), "password"); // Not recommended 
+
+        if (ip == null || !isValidIP(ip)) { 
+            ip = "http://10.0.2.2"; // Default local server IP
+            LocalStorage.saveData(getContext(), "IP", ip);
+        }
+
+        String SERVER_URL = ip + ":3000";
+
+        try {
+            
+            socket = IO.socket(SERVER_URL);
+            socket.connect();
+
+             // Listen for previous messages
+             socket.on("previousMessagess", args -> {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    try {
+
+                        JSONArray messages = (JSONArray) args[0];
+                        StringBuilder previousMessages = new StringBuilder();
+                        for (int i = 0; i < messages.length(); i++) {
+                            // previousMessages.append(messages.getString(i)).append("\n");
+                            addMessageBubble(messages.getJSONObject(i), true);
+                        }
+                        // Set the previous messages in the TextView
+                        // textView.setText(previousMessages.toString());
+
+
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error parsing previous messages: ", e);
+                    }
+                });
+            });
+
+
+            socket.on("messages", args -> {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        // args[0] is a JSONObject, not a String
+                        JSONObject messageJson = (JSONObject) args[0];
+                        // String newMessage = messageJson.getString("message"); // Extract the "message" field
+                        // // Append the new message to the existing TextView content
+                        // textView.append(messageJson.toString()+"\n");
+
+                        String newMessage = messageJson.getString("message");
+                        // boolean isUser = messageJson.getBoolean("isUser");
+            
+                        addMessageBubble(messageJson, false);
+
+                        Log.d(TAG, "Received: " + newMessage);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error receiving new message: ", e);
+                    }
+                });
+            });
+
+            // Handle connection errors
+            socket.on("connect_error", args -> {
+                Log.e(TAG, "Socket connection failed: " + args[0]);
+            });
+
+
+            button.setOnClickListener(v -> {
+                    String message = editText.getText().toString();
+                    if (!message.isEmpty()) {
+                        //textView.setText("Message Sent: " + message);
+                        Toast.makeText(getActivity(), "Message Sent!", Toast.LENGTH_SHORT).show();
+                        
+                        Log.d(TAG, "Received: " + socket.toString());
+                        
+                        try {
+                            JSONObject data = new JSONObject();
+                            data.put("message", message);
+                            data.put("name",name);
+                            socket.emit("sendMessages", data);
+                        } catch (Exception e) {
+                            Log.e(TAG, "JSON Exception: " + e.getMessage());
+                        }
+
+                        // Hide the keyboard after sending the message
+                    InputMethodManager imm = (InputMethodManager) requireContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(editText.getWindowToken(), 0);
+                    }
+
+                      
+                        
+                }});
+            
+        } catch (URISyntaxException e) {
+            LocalStorage.saveData(requireContext(), "IP", "http://10.0.2.2");
+            Log.e(TAG, "Socket Connection Error: " + e.getMessage());
+            
+        }
+
+        return view;
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        if (socket != null) {
+            socket.off("previousMessagess");
+            socket.off("messages");
+            socket.disconnect();
+        }
+    }
+
+   
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setHasOptionsMenu(true); // Enable options menu in Fragment C
+    }
+
+    @Override
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
+        menu.clear(); // Clear previous menu items
+        inflater.inflate(R.menu.menu_fragment_c, menu); // Inflate Fragment C menu
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.menu_logout) {
+            LocalStorage.removeData(requireContext(), "IP");
+            LocalStorage.removeData(requireContext(), "name");
+            LocalStorage.removeData(requireContext(), "password"); // ⚠️ Not secure
+
+            // Navigate back to Fragment B on logout
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).replaceFragment(new FragmentB(), "Fragment B", true);
+            }
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
+package com.example.myapplication6;
+
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.Toast;
+import android.widget.TextView;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+import android.view.MenuInflater;
+
+
+import android.app.AlertDialog;
+import android.view.Menu;
+import android.view.MenuItem;
+
+import android.util.Log;
+import android.view.inputmethod.InputMethodManager;
+import android.content.Context;
+import io.socket.client.IO;
+import io.socket.client.Socket;
+import io.socket.emitter.Emitter;
+import org.json.JSONObject;
+import org.json.JSONArray;
+import org.json.JSONException;
+import java.net.URISyntaxException;
+import java.time.LocalDate;
+
+import androidx.appcompat.app.ActionBar;
+import androidx.appcompat.app.AppCompatActivity;
+
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+
+import android.view.Gravity;
+import android.widget.ImageView;
+
+public class FragmentC extends Fragment {
+    private Socket socket;
+    private EditText editText;
+    private TextView textView;
+    // private Button button;
+    
+    private static final String TAG = "SocketIO";
+
+    private boolean isValidIP(String ip) {
+        // Check if IP is in format: http://xxx.xxx.xxx.xxx OR http://localhost
+        return ip.matches("^(http:\\/\\/localhost|http:\\/\\/\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})$");
+    }
+    
+   
+
+    public void addMessageBubble(JSONObject messageJson, boolean isUser) {
+        LayoutInflater inflater = LayoutInflater.from(getContext());
+        View bubbleView;
+
+        try {
+            String newMessagex = messageJson.getString("name");
+            // isUser=newMessagex=="igor" ? true : false;
+            // isUser = "igor".equals(newMessagex);
+            isUser=!newMessagex.equals("igor");
+        } catch (JSONException e) {
+            Log.e(TAG, "Error extracting message fields", e);
+           
+        }
+    
+        // Inflate the correct bubble layout
+        bubbleView = inflater.inflate(isUser ? R.layout.bubble_user : R.layout.bubble_guest, null);
+    
+      
+
+       
+
+        // Set message text
+        TextView messageText = bubbleView.findViewById(R.id.bubble_text);
+
+        // String newMessage = messageJson.getString("messagex");
+        // String name = messageJson.getString("name");
+
+        try {
+            String newMessage = messageJson.getString("message");
+            String name = messageJson.getString("name");
+
+            String poruka = newMessage + " " + name;
+            messageText.setText(poruka);
+        } catch (JSONException e) {
+            Log.e(TAG, "Error extracting message fields", e);
+            messageText.setText("Error: Invalid message format");
+        }
+
+       
+        // Set avatar based on user or guest
+        ImageView avatarImage = bubbleView.findViewById(R.id.bubble_avatar);
+        if (isUser) {
+            avatarImage.setImageResource(R.drawable.ic_user_avatar);
+        } else {
+            avatarImage.setImageResource(R.drawable.ic_guest_avatar);
+        }
+    
+        // Set message alignment dynamically
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.gravity = isUser ? Gravity.END : Gravity.START;
+        bubbleView.setLayoutParams(params);
+    
+        // Add bubble to the message container
+        LinearLayout messageContainer = getView().findViewById(R.id.message_container);
+        messageContainer.addView(bubbleView);
+    
+        // Auto-scroll to the latest message
+        ScrollView scrollView = getView().findViewById(R.id.message_scroll);
+        scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+    }
+    
+    String ip="";
+    String name="";
+    String password="";
+
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_c, container, false);
+
+        // textView = view.findViewById(R.id.about_text);
+        editText = view.findViewById(R.id.about_edit_text);
+        Button button = view.findViewById(R.id.about_button);
+
+      
+
+        View footer = view.findViewById(R.id.footer_layout);
+
+        // Retrieve stored data
+        ip = LocalStorage.getData(requireContext(), "IP");
+        name = LocalStorage.getData(requireContext(), "name");
+        password = LocalStorage.getData(requireContext(), "password"); // Not recommended 
+
+        if (ip == null || !isValidIP(ip)) { 
+            ip = "http://10.0.2.2"; // Default local server IP
+            LocalStorage.saveData(getContext(), "IP", ip);
+        }
+
+        String SERVER_URL = ip + ":3000";
+
+        try {
+            
+            socket = IO.socket(SERVER_URL);
+            socket.connect();
+
+             // Listen for previous messages
+             socket.on("previousMessagess", args -> {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    try {
+
+                        JSONArray messages = (JSONArray) args[0];
+                        StringBuilder previousMessages = new StringBuilder();
+                        for (int i = 0; i < messages.length(); i++) {
+                            // previousMessages.append(messages.getString(i)).append("\n");
+                            addMessageBubble(messages.getJSONObject(i), true);
+                        }
+                        // Set the previous messages in the TextView
+                        // textView.setText(previousMessages.toString());
+
+
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error parsing previous messages: ", e);
+                    }
+                });
+            });
+
+
+            socket.on("messages", args -> {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        // args[0] is a JSONObject, not a String
+                        JSONObject messageJson = (JSONObject) args[0];
+                        // String newMessage = messageJson.getString("message"); // Extract the "message" field
+                        // // Append the new message to the existing TextView content
+                        // textView.append(messageJson.toString()+"\n");
+
+                        String newMessage = messageJson.getString("message");
+                        // boolean isUser = messageJson.getBoolean("isUser");
+            
+                        addMessageBubble(messageJson, false);
+
+                        Log.d(TAG, "Received: " + newMessage);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error receiving new message: ", e);
+                    }
+                });
+            });
+
+            // Handle connection errors
+            socket.on("connect_error", args -> {
+                Log.e(TAG, "Socket connection failed: " + args[0]);
+            });
+
+
+            button.setOnClickListener(v -> {
+                    String message = editText.getText().toString();
+                    if (!message.isEmpty()) {
+                        //textView.setText("Message Sent: " + message);
+                        Toast.makeText(getActivity(), "Message Sent!", Toast.LENGTH_SHORT).show();
+                        
+                        Log.d(TAG, "Received: " + socket.toString());
+                        
+                        try {
+                            JSONObject data = new JSONObject();
+                            data.put("message", message);
+                            data.put("name",name);
+                            socket.emit("sendMessages", data);
+                        } catch (Exception e) {
+                            Log.e(TAG, "JSON Exception: " + e.getMessage());
+                        }
+
+                        // Hide the keyboard after sending the message
+                    InputMethodManager imm = (InputMethodManager) requireContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(editText.getWindowToken(), 0);
+                    }
+
+                      
+                        
+                }});
+            
+        } catch (URISyntaxException e) {
+            LocalStorage.saveData(requireContext(), "IP", "http://10.0.2.2");
+            Log.e(TAG, "Socket Connection Error: " + e.getMessage());
+            
+        }
+
+        return view;
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        if (socket != null) {
+            socket.off("previousMessagess");
+            socket.off("messages");
+            socket.disconnect();
+        }
+    }
+
+   
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setHasOptionsMenu(true); // Enable options menu in Fragment C
+    }
+
+    @Override
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
+        menu.clear(); // Clear previous menu items
+        inflater.inflate(R.menu.menu_fragment_c, menu); // Inflate Fragment C menu
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.menu_logout) {
+            LocalStorage.removeData(requireContext(), "IP");
+            LocalStorage.removeData(requireContext(), "name");
+            LocalStorage.removeData(requireContext(), "password"); // ⚠️ Not secure
+
+            // Navigate back to Fragment B on logout
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).replaceFragment(new FragmentB(), "Fragment B", true);
+            }
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+

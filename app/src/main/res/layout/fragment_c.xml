@@ -1,0 +1,66 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+   <ScrollView
+    android:id="@+id/message_scroll"
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1">
+        
+    <LinearLayout
+        android:id="@+id/message_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
+
+</ScrollView>
+
+
+  <LinearLayout
+        android:id="@+id/footer1_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+
+    <LinearLayout
+        android:id="@+id/footer_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/about_edit_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Enter message"
+            android:inputType="text" />
+
+        <Button
+            android:id="@+id/about_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Posalji poruku" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/buttonSelect"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Pick an Image" />
+
+    <ImageView
+        android:id="@+id/imageView"
+        android:layout_width="300dp"
+        android:layout_height="300dp"
+        android:visibility="gone"
+        android:scaleType="centerCrop"
+        android:layout_marginTop="16dp"/>
+
+  </LinearLayout>
+
+</LinearLayout>
